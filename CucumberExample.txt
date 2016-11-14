@@ -1,0 +1,205 @@
+Feature File 
+@Leads @lbp
+Feature: Leads: Lead form submission and validation listing on Large Breakpoint
+
+  Scenario Outline: Lead form submission and validation listing on Large Breakpoint
+    Given I launch the browser in "Large" breakpoint
+    Given I am in "For Sale" <product> Detail Page
+	
+	#going through these 2 steps
+    When I submit test information in the <leadFormName> lead form for <propertyType> property
+    Then I should return a "Bottom Rail" "showcase" lead id from splunk api
+    
+    Examples:
+    |	product	|	LeadFormName	|	propertyType	|
+    
+src/LeadForm.java    
+	@When("^I submit test information in the \"([^\"]*)\" lead form for \"([^\"]*)\" property$")
+	public void submitTestInformation(String leadForm, String propertyType) {
+		boolean enterInfo = true;
+		boolean submitInfo = true;
+		String FnName = "submitTestInformation";
+		String FirstName = "test";
+		String LastName = Framework.GetRandomString();
+		String timeStamp = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss").format(new java.util.Date());
+		String EmailAddr = "automation-" + timeStamp + Thread.currentThread().getName() + "@test.com";
+		String PhoneNo = "9998675309";
+		
+		try {
+			switch (rmdLead.replace(" ", "").toLowerCase()) {
+			case "Top Lead Form":
+				enterInfo = leadFormFill(leadForm, propertyType, FirstName, LastName, EmailAddr,breakpoint);
+				if(enterInfo == true){
+					#Writresults is framework method for writing to html report
+					Framework.WriteResults("Lead is submitted sucessfully", FnName,"Pass");
+				}
+				else{
+					Framework.WriteResults("Lead was not submitted sucessfully", FnName,"fail");
+				}
+				break;
+
+			case "Bottom Lead Form":
+				enterInfo = leadFormFill(leadForm, propertyType, FnName, FirstName, LastName, EmailAddr, PhoneNo,rmdLead.toLowerCase(),breakpoint);
+				if(enterInfo == true){
+					Framework.WriteResults("Lead is submitted sucessfully", FnName,"Pass");
+				}
+				else{
+					Framework.WriteResults("Lead was not submitted sucessfully", FnName,"fail");
+				}
+				break;
+				
+		} catch (Exception e) {
+			Framework.WriteResults("Thank you modal is not displayed so Lead is not submitted successfully.", FnName, "Warning");
+		}
+
+		Assert.assertTrue(enterInfo);
+		submitInfo = storeGlobalLeadVariable(EmailAddr, FirstName, LastName, PhoneNo);
+		Assert.assertTrue(submitInfo);			
+	}
+	
+	private boolean leadFormFill(String leadForm, String propertyType, String FirstName, String LastName, String EmailAddr, String PhoneNo, String leadForm, String breakpoint) {
+		boolean hasPassed = true;
+		FnName="leadFormFill";
+
+		try
+		{	
+			if(leadForm.equalsIgnoreCase("bottom")||leadForm.equalsIgnoreCase("top"){
+				if(breakpoint.equalsIgnoreCase("xxsmall")){
+					//object model keeps path/id in seperate maintained file in case of changed id/path
+					Framework.scrollIntoView("LeadForm", "LeadFormInputName" + form, "top"); //ex
+					
+				}	
+				
+				//helper methods in the Framework such as Send Keys, waits until object is present, then will clear the object before sending text
+				Framework.sendKeys("LeadForm", "LeadFormInputEmail" + form,EmailAddr);
+				Framework.sendKeys("LeadForm", "LeadFormInputName" + form,	FirstName + " " + LastName);
+				Framework.sendKeys("LeadForm", "LeadFormInputPhoneNumber" + form, PhoneNo);
+				
+				Framework.clickOnElementByJs("LeadForm", "LeadFormInputSubmit" + form);
+
+		} catch (Exception e){
+			System.out.println(e);
+			hasPassed = false;
+		}
+
+		return hasPassed;
+	}
+
+	@Then("^I should return a \"([^\"]*)\" \"([^\"]*)\" lead id from splunk api$")
+	public void getSplunkLeadId(String leadForm, String propType){
+		boolean hasPassed = true;
+		String functionName = "getSplunkLeadId";
+		String leadEmail = null;
+		String leadId = null;
+
+		leadEmail =	Driver.globalValues.get(Thread.currentThread().getName() + "Email");
+
+		if(leadEmail != null){
+			leadId = ExternalServices.SearchLeadByEmail(leadEmail, leadForm, propType);
+
+			if(!leadId.contains("Error")){
+				Framework.WriteResults("Lead has been submitting successfully with the following lead Id- " + leadId, functionName, "Pass");
+			}
+			else if(leadId.contains("WARNING")){
+				Framework.WriteResults("Lead was not successfully submitted: " + leadId, functionName, "Fail");
+				Assert.assertTrue("Lead was not successfully submitted: " + leadId,false);
+			}
+			else{
+				Framework.WriteResults("Lead was not successfully submitted: " + leadId, functionName, "Fail");
+				hasPassed = false;
+			}
+		} else{
+			Assert.assertTrue("No lead was previously submitted", false);
+		}
+
+		Assert.assertTrue(leadId,hasPassed);
+	}
+
+src/ExternalServices
+	public static String SearchLeadByEmail(String submittedEmail, String leadForm, String propType){
+		String splunkLeadId = "";
+		List<String> resultEmail = new ArrayList<String>(); 
+		List<String> resultId = new ArrayList<String>(); 
+		List<String> resultStatus = new ArrayList<String>(); 
+		
+		Service service = null;
+		Job automationLeadJob = null;
+		
+		//calls creates splunk TLS connection
+		service = splunkConnect(<SplunkAppName>);
+        
+		try{
+			SavedSearch automationLeadSearch = service.getSavedSearches().get(<SplunkJobName>);
+
+			 //Initialize job
+			automationLeadJob = runSplunkJob(automationLeadSearch);
+		} catch (InterruptedException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		
+	     JobResultsArgs resultsArgs = new JobResultsArgs();
+	     resultsArgs.setOutputMode(JobResultsArgs.OutputMode.JSON);
+
+	     // Display results in JSON using ResultsReaderJson
+	     try{
+	     InputStream results = automationLeadJob.getResults(resultsArgs);
+	     ResultsReaderJson resultsReader = new ResultsReaderJson(results);
+	     HashMap<String, String> event;
+	     System.out.println("\nFormatted results from the search job as JSON\n");
+	     //Thread.sleep(10000);
+	     while ((event = resultsReader.getNextEvent()) != null) {
+	         for (String key: event.keySet())
+	        	 
+	        	 if(key.contains(<fieldName>)){
+	        		 resultEmail.add(event.get(key));
+	        	 }
+	        	 else if(key.contains(<fieldName>)){
+	        		 resultId.add(event.get(key));
+	        	 }
+	        	 else if(key.contains(<fieldName>)){
+	        		 resultStatus.add(event.get(key));
+	        	 }
+	     }
+	     resultsReader.close();}
+	     catch(Exception e){
+	    	 System.out.println(e);
+	     }
+	     
+	     Framework.WriteResults("Connected to Splunk, searching for " + submittedEmail + " in result set");
+	     try{
+		     for(int i = 0;i <= resultEmail.size(); i++){
+				if(resultEmail.get(i).contains(submittedEmail) && (resultStatus.get(i).contains("ok"))){
+		    		 if(leadForm.equalsIgnoreCase("Top")){
+		    			 if(formName.get(i).equalsIgnoreCase("Top")){
+				    		 splunkLeadId = resultId.get(i);
+				    		 
+				    		 Framework.WriteResults("LeadID " + splunkLeadId + " successfully received from splunk report for Email: " + submittedEmail + " in " + leadForm);
+				    		 break;
+			    		 }
+			    		 else{
+			    			 Framework.WriteResults("Email was found on " + formName + " not on " + leadForm + "as expected");
+			    		 } 
+		    	 	 }
+				}
+				else if(resultEmail.get(i).contains(submittedEmail)){
+		    		 Framework.WriteResults("Error occured: splunk did not process the lead successfully");
+		    		 Framework.WriteResults("expected - " + submittedEmail + "actual - " + resultEmail.get(i));
+		    		 Framework.WriteResults("expected - contains \"ok\" and \"spam\" " + "actual - " + resultStatus.get(i));
+		    		 Framework.WriteResults("expected - " + leadForm + "actual - " + formName.get(i));
+		    		 splunkLeadId = "Error in splunk Processing";
+		    	 }
+		    	 else{
+		    		 System.out.println(submittedEmail + " could not be found in result set");
+		    		 splunkLeadId = submittedEmail + " could not be found in result set";
+		    	 }	    	 		    	
+		     }
+	     }
+	     catch(Exception ex){
+	     Framework.WriteResults(submittedEmail + " could not be found in result set. Error = " + ex);
+	     }
+	     
+		return splunkLeadId;
+	}
+	
+	
